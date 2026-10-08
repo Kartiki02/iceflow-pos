@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IceFlow Enterprise - Secure POS System</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Firebase CDN -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js"></script>
     <style>
         * {
             margin: 0;
@@ -1341,22 +1344,92 @@
             document.getElementById('billModal').classList.remove('active');
         }
 
-        function saveData() {
-            const encrypted = btoa(JSON.stringify(app));
-            localStorage.setItem('iceflow_' + app.shopName.replace(/\s+/g, '_'), encrypted);
+        // Save data to Firestore
+        async function saveData() {
+          if (!app.shopName) return;
+          
+          try {
+            const shopRef = db.collection('shops').doc(app.shopName);
+            
+            await shopRef.set({
+              shopName: app.shopName,
+              lastUpdated: new Date()
+            }, { merge: true });
+            
+            // Save inventory
+            for (let item of app.inventory) {
+              await shopRef.collection('items').doc(item.id.toString()).set(item);
+            }
+            
+            // Save orders
+            for (let order of app.orders) {
+              await shopRef.collection('orders').doc(order.id).set(order);
+            }
+            
+            console.log('Data saved to Firestore');
+          } catch (error) {
+            console.error('Error saving data:', error);
+          }
+        }
+        
+        // Load data from Firestore
+        async function loadData() {
+          if (!app.shopName) return;
+          
+          try {
+            const shopRef = db.collection('shops').doc(app.shopName);
+            
+            // Load inventory
+            const itemsSnap = await shopRef.collection('items').get();
+            app.inventory = [];
+            itemsSnap.forEach(doc => {
+              app.inventory.push(doc.data());
+            });
+            
+            // Load orders
+            const ordersSnap = await shopRef.collection('orders').get();
+            app.orders = [];
+            ordersSnap.forEach(doc => {
+              app.orders.push(doc.data());
+            });
+            
+            console.log('Data loaded from Firestore');
+          } catch (error) {
+            console.error('Error loading data:', error);
+          }
         }
 
-        function loadData() {
-            const encrypted = localStorage.getItem('iceflow_' + app.shopName.replace(/\s+/g, '_'));
-            if (encrypted) {
-                try {
-                    const data = JSON.parse(atob(encrypted));
-                    app = { ...app, ...data };
-                } catch (e) {
-                    console.log('No saved data');
-                }
-            }
+        // Call loadData after login
+        async function login() {
+          // ... existing login code ...
+          await loadData();
+          initializeApp();
         }
+        // ========== FIREBASE CONFIGURATION ==========
+        const firebaseConfig = {
+            apiKey: "AIzaSyBrnkDFhccdkiMihPtX1w49QpLEj1ruGGs",
+            authDomain: "iceflow-pos.firebaseapp.com",
+            projectId: "iceflow-pos",
+            storageBucket: "iceflow-pos.firebasestorage.app",
+            messagingSenderId: "540411794384",
+            appId: "1:540411794384:web:192f7303d5dda8c03e9fd5"
+        };
+    
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+    
+        // Enable offline persistence
+        db.enablePersistence()
+            .catch((err) => {
+                if (err.code == 'failed-precondition') {
+                    console.log('Multiple tabs open');
+                } else if (err.code == 'unimplemented') {
+                    console.log('Browser does not support persistence');
+                }
+            });
+    
+        console.log('Firebase initialized successfully!');
     </script>
 </body>
 </html>
