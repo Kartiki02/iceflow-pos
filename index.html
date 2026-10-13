@@ -666,13 +666,18 @@
             console.log('Cart after clear:', DB.carts[DB.currentCart]);
 
             SAVE();
-            RENDER_CART();
-            RENDER_SLOTS();
-            RENDER_INV_TABLE();
-            RENDER_BILLS_TABLE();
-            RENDER_MENU();
             CLOSE_MODAL('checkoutModal');
-            alert('✅ Order ' + bill.id + ' complete! Bill saved.');
+
+            // Force UI update with delay to ensure modal closes and new renders show
+            setTimeout(() => {
+                RENDER_CART();
+                RENDER_SLOTS();
+                RENDER_INV_TABLE();
+                RENDER_BILLS_TABLE();
+                RENDER_MENU();
+                console.log('✅ All UI updated after checkout');
+                alert('✅ Order ' + bill.id + ' complete!\n\nBill saved successfully.');
+            }, 150);
         }
 
         // ADMIN FUNCTIONS
@@ -1027,9 +1032,18 @@
             let dateFilter = document.getElementById('billsDateFilter').value;
             let filtered = DB.bills;
 
+            console.log('Date filter value:', dateFilter);
+            console.log('Total bills:', DB.bills.length);
+
             if (dateFilter) {
-                let filterDate = new Date(dateFilter).toDateString();
-                filtered = DB.bills.filter(b => new Date(b.date).toDateString() === filterDate);
+                // Convert filter date string (YYYY-MM-DD) to proper comparison
+                let filterDate = new Date(dateFilter + 'T00:00:00').toDateString();
+                filtered = DB.bills.filter(b => {
+                    let billDate = new Date(b.date).toDateString();
+                    console.log('Comparing bill date:', billDate, 'with filter:', filterDate);
+                    return billDate === filterDate;
+                });
+                console.log('Filtered bills:', filtered.length);
             }
 
             if (filtered.length === 0) {
