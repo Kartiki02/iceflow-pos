@@ -979,9 +979,10 @@
             let csv = '';
 
             if (DB.period === 'today') {
-                csv = 'Time\tItems\tAmount\tPayment\tCustomer\n';
+                csv = 'Order ID,DateTime,Items,Subtotal,Discount,Total,Payment Method,Cash,Online,Customer Name,Customer Contact\n';
                 filtered.forEach(o => {
-                    csv += new Date(o.date).toLocaleTimeString() + '\t' + o.items.map(i => i.name + ' x' + i.qty).join('; ') + '\t' + o.total + '\t' + o.method + '\t' + (o.customer.name || '') + '\n';
+                    let items = o.items.map(i => i.name + ' x' + i.qty).join('; ');
+                    csv += '"' + o.id + '","' + new Date(o.date).toLocaleString() + '","' + items + '",' + o.subtotal + ',' + o.discount + ',' + o.total + ',"' + o.method + '",' + (o.cash || '') + ',' + (o.online || '') + ',"' + (o.customer.name || '') + '","' + (o.customer.contact || '') + '"\n';
                 });
             } else if (DB.period === 'weekly') {
                 let daysMap = {};
@@ -998,10 +999,10 @@
                         daysMap[key].online += o.online || 0;
                     }
                 });
-                csv = 'Date\tTotal Sale\tCash\tOnline\tOrders\n';
+                csv = 'Date,Total Sale,Cash,Online,Orders\n';
                 for (let key in daysMap) {
                     let d = daysMap[key];
-                    csv += d.date.toLocaleDateString() + '\t' + d.total + '\t' + d.cash + '\t' + d.online + '\t' + d.count + '\n';
+                    csv += d.date.toLocaleDateString() + ',' + d.total + ',' + d.cash + ',' + d.online + ',' + d.count + '\n';
                 }
             } else if (DB.period === 'monthly') {
                 let weeksMap = {};
@@ -1019,10 +1020,10 @@
                         weeksMap[key].online += o.online || 0;
                     }
                 });
-                csv = 'Week\tTotal Sale\tCash\tOnline\tOrders\n';
+                csv = 'Week,Total Sale,Cash,Online,Orders\n';
                 for (let key in weeksMap) {
                     let w = weeksMap[key];
-                    csv += key + '\t' + w.total + '\t' + w.cash + '\t' + w.online + '\t' + w.count + '\n';
+                    csv += key + ',' + w.total + ',' + w.cash + ',' + w.online + ',' + w.count + '\n';
                 }
             } else if (DB.period === 'yearly' || DB.period === 'custom') {
                 let monthsMap = {};
@@ -1040,14 +1041,14 @@
                         monthsMap[key].online += o.online || 0;
                     }
                 });
-                csv = 'Month\tTotal Sale\tCash\tOnline\tOrders\n';
+                csv = 'Month,Total Sale,Cash,Online,Orders\n';
                 for (let key in monthsMap) {
                     let m = monthsMap[key];
-                    csv += key + '\t' + m.total + '\t' + m.cash + '\t' + m.online + '\t' + m.count + '\n';
+                    csv += key + ',' + m.total + ',' + m.cash + ',' + m.online + ',' + m.count + '\n';
                 }
             }
 
-            let blob = new Blob([csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+            let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             let link = document.createElement('a');
             let url = URL.createObjectURL(blob);
             link.href = url;
