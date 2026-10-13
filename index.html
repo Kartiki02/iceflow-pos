@@ -983,7 +983,7 @@
 
             let link = document.createElement('a');
             link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-            link.download = 'sales_' + new Date().toISOString().split('T')[0] + '.xlsx';
+            link.download = 'sales_' + new Date().toISOString().split('T')[0] + '.csv';
             link.click();
         }
 
