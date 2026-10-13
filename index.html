@@ -661,23 +661,31 @@
             console.log('✅ Order saved:', bill.id);
             console.log('Cart before clear:', DB.carts[DB.currentCart]);
 
+            // CRITICAL: Clear cart array completely
             DB.carts[DB.currentCart] = [];
+            console.log('🧹 Cart cleared. New cart:', DB.carts[DB.currentCart]);
 
-            console.log('Cart after clear:', DB.carts[DB.currentCart]);
-
+            // Save to storage
             SAVE();
+            console.log('💾 Data saved to storage');
+
+            // Force re-render of cart display FIRST
+            document.getElementById('cartDisplay').innerHTML = '<p style="color: #7f8c8d;">Empty</p>';
+            document.getElementById('cartTotal').textContent = '₹0';
+
+            // Then close modal
             CLOSE_MODAL('checkoutModal');
 
-            // Force UI update with delay to ensure modal closes and new renders show
-            setTimeout(() => {
-                RENDER_CART();
-                RENDER_SLOTS();
-                RENDER_INV_TABLE();
-                RENDER_BILLS_TABLE();
-                RENDER_MENU();
-                console.log('✅ All UI updated after checkout');
-                alert('✅ Order ' + bill.id + ' complete!\n\nBill saved successfully.');
-            }, 150);
+            // Then update everything else - synchronous, no delay needed
+            RENDER_CART();
+            RENDER_SLOTS();
+            RENDER_INV_TABLE();
+            RENDER_BILLS_TABLE();
+            RENDER_MENU();
+            RENDER_CATS();
+
+            console.log('✅ All UI updated after checkout');
+            alert('✅ Order ' + bill.id + ' complete!\n\nBill saved successfully.');
         }
 
         // ADMIN FUNCTIONS
@@ -888,8 +896,20 @@
             });
 
             let sales = filtered.reduce((s, o) => s + o.total, 0);
-            let cash = filtered.filter(o => o.method === 'cash' || (o.cash && !o.online)).reduce((s, o) => s + (o.cash || o.total), 0);
-            let online = filtered.filter(o => o.method === 'online' || (o.online && !o.cash)).reduce((s, o) => s + (o.online || o.total), 0);
+
+            // Calculate cash and online properly - handle split payments
+            let cash = 0, online = 0;
+            for (let o of filtered) {
+                if (o.method === 'cash') {
+                    cash += (o.cash || o.total);
+                } else if (o.method === 'online') {
+                    online += (o.online || o.total);
+                } else if (o.method === 'split') {
+                    cash += (o.cash || 0);
+                    online += (o.online || 0);
+                }
+            }
+            console.log('Report calculations - Sales:', sales, 'Cash:', cash, 'Online:', online, 'Orders:', filtered.length);
 
             document.getElementById('rptSales').textContent = Math.round(sales);
             document.getElementById('rptOrders').textContent = filtered.length;
@@ -1032,22 +1052,32 @@
             let dateFilter = document.getElementById('billsDateFilter').value;
             let filtered = DB.bills;
 
-            console.log('Date filter value:', dateFilter);
-            console.log('Total bills:', DB.bills.length);
+            console.log('📅 Date filter:', dateFilter);
+            console.log('📊 Total bills in DB:', DB.bills.length);
 
             if (dateFilter) {
-                // Convert filter date string (YYYY-MM-DD) to proper comparison
-                let filterDate = new Date(dateFilter + 'T00:00:00').toDateString();
+                // Parse the input date (format: YYYY-MM-DD)
+                let filterDateParts = dateFilter.split('-'); // ['2026', '10', '13']
+                let filterYear = parseInt(filterDateParts[0]);
+                let filterMonth = parseInt(filterDateParts[1]) - 1; // JS months are 0-indexed
+                let filterDay = parseInt(filterDateParts[2]);
+
                 filtered = DB.bills.filter(b => {
-                    let billDate = new Date(b.date).toDateString();
-                    console.log('Comparing bill date:', billDate, 'with filter:', filterDate);
-                    return billDate === filterDate;
+                    let billDate = new Date(b.date);
+                    let billYear = billDate.getFullYear();
+                    let billMonth = billDate.getMonth();
+                    let billDay = billDate.getDate();
+
+                    let match = billYear === filterYear && billMonth === filterMonth && billDay === filterDay;
+                    if (match) console.log('✅ Bill matched:', b.id, billDate.toLocaleDateString());
+                    return match;
                 });
-                console.log('Filtered bills:', filtered.length);
+
+                console.log('🔍 Filtered result:', filtered.length, 'bills');
             }
 
             if (filtered.length === 0) {
-                document.getElementById('billsTable').innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #7f8c8d;">No bills for selected date.</td></tr>';
+                document.getElementById('billsTable').innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #7f8c8d;">No bills for selected date. Try selecting today or clearing the filter.</td></tr>';
                 return;
             }
 
