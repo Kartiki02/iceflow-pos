@@ -976,15 +976,85 @@
                 return true;
             });
 
-            let csv = 'Order ID,Date,Items,Amount,Payment,Cash,Online,Customer,Contact\n';
-            filtered.forEach(o => {
-                csv += '"' + o.id + '","' + new Date(o.date).toLocaleString() + '","' + o.items.map(i => i.name + ' x' + i.qty).join('; ') + '","' + o.total + '","' + o.method + '","' + (o.cash || '') + '","' + (o.online || '') + '","' + o.customer.name + '","' + o.customer.contact + '"\n';
-            });
+            let csv = '';
 
+            if (DB.period === 'today') {
+                csv = 'Time\tItems\tAmount\tPayment\tCustomer\n';
+                filtered.forEach(o => {
+                    csv += new Date(o.date).toLocaleTimeString() + '\t' + o.items.map(i => i.name + ' x' + i.qty).join('; ') + '\t' + o.total + '\t' + o.method + '\t' + (o.customer.name || '') + '\n';
+                });
+            } else if (DB.period === 'weekly') {
+                let daysMap = {};
+                filtered.forEach(o => {
+                    let d = new Date(o.date);
+                    let key = d.toDateString();
+                    if (!daysMap[key]) daysMap[key] = { date: d, total: 0, cash: 0, online: 0, count: 0 };
+                    daysMap[key].total += o.total;
+                    daysMap[key].count++;
+                    if (o.method === 'cash') daysMap[key].cash += o.cash || o.total;
+                    else if (o.method === 'online') daysMap[key].online += o.online || o.total;
+                    else if (o.method === 'split') {
+                        daysMap[key].cash += o.cash || 0;
+                        daysMap[key].online += o.online || 0;
+                    }
+                });
+                csv = 'Date\tTotal Sale\tCash\tOnline\tOrders\n';
+                for (let key in daysMap) {
+                    let d = daysMap[key];
+                    csv += d.date.toLocaleDateString() + '\t' + d.total + '\t' + d.cash + '\t' + d.online + '\t' + d.count + '\n';
+                }
+            } else if (DB.period === 'monthly') {
+                let weeksMap = {};
+                filtered.forEach(o => {
+                    let d = new Date(o.date);
+                    let week = Math.ceil(d.getDate() / 7);
+                    let key = 'Week ' + week;
+                    if (!weeksMap[key]) weeksMap[key] = { total: 0, cash: 0, online: 0, count: 0 };
+                    weeksMap[key].total += o.total;
+                    weeksMap[key].count++;
+                    if (o.method === 'cash') weeksMap[key].cash += o.cash || o.total;
+                    else if (o.method === 'online') weeksMap[key].online += o.online || o.total;
+                    else if (o.method === 'split') {
+                        weeksMap[key].cash += o.cash || 0;
+                        weeksMap[key].online += o.online || 0;
+                    }
+                });
+                csv = 'Week\tTotal Sale\tCash\tOnline\tOrders\n';
+                for (let key in weeksMap) {
+                    let w = weeksMap[key];
+                    csv += key + '\t' + w.total + '\t' + w.cash + '\t' + w.online + '\t' + w.count + '\n';
+                }
+            } else if (DB.period === 'yearly' || DB.period === 'custom') {
+                let monthsMap = {};
+                filtered.forEach(o => {
+                    let d = new Date(o.date);
+                    let month = d.getMonth();
+                    let key = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month];
+                    if (!monthsMap[key]) monthsMap[key] = { total: 0, cash: 0, online: 0, count: 0 };
+                    monthsMap[key].total += o.total;
+                    monthsMap[key].count++;
+                    if (o.method === 'cash') monthsMap[key].cash += o.cash || o.total;
+                    else if (o.method === 'online') monthsMap[key].online += o.online || o.total;
+                    else if (o.method === 'split') {
+                        monthsMap[key].cash += o.cash || 0;
+                        monthsMap[key].online += o.online || 0;
+                    }
+                });
+                csv = 'Month\tTotal Sale\tCash\tOnline\tOrders\n';
+                for (let key in monthsMap) {
+                    let m = monthsMap[key];
+                    csv += key + '\t' + m.total + '\t' + m.cash + '\t' + m.online + '\t' + m.count + '\n';
+                }
+            }
+
+            let blob = new Blob([csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
             let link = document.createElement('a');
-            link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-            link.download = 'sales_' + new Date().toISOString().split('T')[0] + '.csv';
+            let url = URL.createObjectURL(blob);
+            link.href = url;
+            let period = DB.period === 'custom' ? 'custom_' + document.getElementById('customYearSelect').value : DB.period;
+            link.download = 'sales_' + period + '_' + new Date().toISOString().split('T')[0] + '.csv';
             link.click();
+            URL.revokeObjectURL(url);
         }
 
         // BILLS
