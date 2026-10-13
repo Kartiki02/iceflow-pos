@@ -408,15 +408,16 @@
 
         let DB = {
             shop: '',
-            cats: ['ice-cream', 'toppings', 'combos', 'beverages'],
+            cats: ['ice-cream', 'toppings', 'combos', 'beverages', 'shakes', 'mastani'],
             items: [
                 {id:1, name:'Vanilla', cat:'ice-cream', price:80, stock:50, icon:'🍦'},
                 {id:2, name:'Chocolate', cat:'ice-cream', price:80, stock:40, icon:'🍫'},
                 {id:3, name:'Strawberry', cat:'ice-cream', price:80, stock:35, icon:'🍓'},
                 {id:4, name:'Double Scoop', cat:'combos', price:150, stock:999, icon:'🍦'},
-                {id:5, name:'Chips', cat:'toppings', price:20, stock:100, icon:'🍫'},
+                {id:5, name:'Chips', cat:'toppings', price:20, stock:100, icon:'🥔'},
                 {id:6, name:'Sprinkles', cat:'toppings', price:15, stock:120, icon:'✨'},
-                {id:7, name:'Coffee', cat:'beverages', price:60, stock:40, icon:'☕'}
+                {id:7, name:'Vanilla Shake', cat:'shakes', price:60, stock:40, icon:'☕'},
+                {id:8, name:'Mango Mastani', cat:'mastani', price:120, stock:30, icon:'🥭'}
             ],
             orders: [],
             bills: [],
@@ -441,9 +442,27 @@
                 document.getElementById('app').classList.add('show');
                 document.getElementById('shopName').textContent = shop;
                 await LOAD();
+                await INIT_FIREBASE_COLLECTIONS();
                 RENDER_ALL();
             } else {
                 alert('Invalid credentials!');
+            }
+        }
+
+        async function INIT_FIREBASE_COLLECTIONS() {
+            if (!FIRESTORE_READY || !FB) return;
+            try {
+                let doc = await FB.collection('shops').doc(DB.shop).get();
+                if (!doc.exists) {
+                    await FB.collection('shops').doc(DB.shop).set({
+                        createdAt: new Date().toISOString(),
+                        lastUpdated: new Date().toISOString(),
+                        data: DB
+                    });
+                    console.log('✅ Firebase collections initialized');
+                }
+            } catch(e) {
+                console.error('Firebase init error:', e);
             }
         }
 
@@ -526,9 +545,11 @@
         function RENDER_SLOTS() {
             let html = '';
             for (let i = 0; i < 5; i++) {
-                html += '<button class="order-slot ' + (DB.currentCart === i ? 'active' : '') + '" onclick="SET_SLOT(' + i + ')">Order ' + (i+1) + '<br>(' + DB.carts[i].length + ')</button>';
+                let itemCount = (DB.carts[i] && Array.isArray(DB.carts[i])) ? DB.carts[i].length : 0;
+                html += '<button class="order-slot ' + (DB.currentCart === i ? 'active' : '') + '" onclick="SET_SLOT(' + i + ')" style="display: flex; flex-direction: column; justify-content: center;">Order ' + (i+1) + '<br><span style="font-size: 14px; margin-top: 4px;">(' + itemCount + ')</span></button>';
             }
             document.getElementById('orderSlots').innerHTML = html;
+            console.log('✅ Order slots rendered:', DB.carts);
         }
 
         function SET_SLOT(i) {
@@ -590,15 +611,24 @@
 
         function FINISH_CHECKOUT() {
             let cart = DB.carts[DB.currentCart];
+            if (!cart || cart.length === 0) {
+                alert('Cart is empty!');
+                return;
+            }
+
             let sub = cart.reduce((s, i) => s + i.price * i.qty, 0);
             let pct = document.querySelector('input[name="discType"][value="pct"]').checked;
             let disc = pct ? sub * (parseFloat(document.getElementById('chkDiscPct').value) || 0) / 100 : parseFloat(document.getElementById('chkDiscFixed').value) || 0;
             let total = Math.max(0, sub - disc);
             let method = document.getElementById('chkMethod').value;
 
+            // Deduct stock
             for (let i of cart) {
                 let item = DB.items.find(x => x.id === i.id);
-                if (item) item.stock -= i.qty;
+                if (item) {
+                    item.stock = Math.max(0, item.stock - i.qty);
+                    console.log('Stock updated for ' + item.name + ': ' + item.stock);
+                }
             }
 
             let bill = {
@@ -628,31 +658,49 @@
             DB.orders.push(bill);
             DB.bills.push(bill);
 
-            SAVE();
+            console.log('✅ Order saved:', bill.id);
+            console.log('Cart before clear:', DB.carts[DB.currentCart]);
+
             DB.carts[DB.currentCart] = [];
+
+            console.log('Cart after clear:', DB.carts[DB.currentCart]);
+
+            SAVE();
             RENDER_CART();
+            RENDER_SLOTS();
             RENDER_INV_TABLE();
             RENDER_BILLS_TABLE();
+            RENDER_MENU();
             CLOSE_MODAL('checkoutModal');
-            alert('✅ Order complete! Bill saved.');
+            alert('✅ Order ' + bill.id + ' complete! Bill saved.');
         }
 
         // ADMIN FUNCTIONS
         function RENDER_CAT_TABLE() {
+            if (!DB.cats || DB.cats.length === 0) {
+                document.getElementById('catTable').innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #7f8c8d;">No categories yet. Click "+ Category" to add one.</td></tr>';
+                return;
+            }
             let html = '<tr><th>Category</th><th>Items</th><th>Action</th></tr>';
             for (let c of DB.cats) {
                 let count = DB.items.filter(i => i.cat === c).length;
-                html += '<tr><td>' + c + '</td><td>' + count + '</td><td><button class="btn" onclick="EDIT_CAT(\'' + c + '\')">Edit</button><button class="btn btn-danger" onclick="DEL_CAT(\'' + c + '\')">Delete</button></td></tr>';
+                html += '<tr><td style="font-weight: 600;">' + c + '</td><td>' + count + '</td><td><button class="btn" onclick="EDIT_CAT(\'' + c + '\')">Edit</button><button class="btn btn-danger" onclick="DEL_CAT(\'' + c + '\')">Delete</button></td></tr>';
             }
             document.getElementById('catTable').innerHTML = html;
+            console.log('✅ Categories rendered:', DB.cats);
         }
 
         function RENDER_INV_TABLE() {
+            if (!DB.items || DB.items.length === 0) {
+                document.getElementById('invTable').innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #7f8c8d;">No items yet. Click "+ Item" to add one.</td></tr>';
+                return;
+            }
             let html = '<tr><th>Item</th><th>Price</th><th>Stock</th><th>Action</th></tr>';
             for (let i of DB.items) {
-                html += '<tr><td>' + i.icon + ' ' + i.name + '</td><td>₹' + i.price + '</td><td>' + i.stock + '</td><td><button class="btn" onclick="EDIT_ITEM(' + i.id + ')">Edit</button><button class="btn btn-danger" onclick="DEL_ITEM(' + i.id + ')">Delete</button></td></tr>';
+                html += '<tr><td>' + i.icon + ' ' + i.name + '</td><td>₹' + i.price + '</td><td style="font-weight: 600;">' + i.stock + '</td><td><button class="btn" onclick="EDIT_ITEM(' + i.id + ')">Edit</button><button class="btn btn-danger" onclick="DEL_ITEM(' + i.id + ')">Delete</button></td></tr>';
             }
             document.getElementById('invTable').innerHTML = html;
+            console.log('✅ Inventory rendered:', DB.items);
         }
 
         let EDIT_CAT_NAME = null;
@@ -730,9 +778,14 @@
         }
 
         function ADD_ITEM_MODAL() {
+            if (DB.cats.length === 0) {
+                alert('⚠️ Create a category first!');
+                return;
+            }
             EDIT_ID = null;
             document.getElementById('itemModalTitle').textContent = 'Add Item';
             document.getElementById('itemModalName').value = '';
+            document.getElementById('itemModalCat').value = DB.cats[0];
             document.getElementById('itemModalPrice').value = '';
             document.getElementById('itemModalStock').value = '';
             document.getElementById('itemModal').classList.add('show');
@@ -966,6 +1019,11 @@
 
         // BILLS
         function RENDER_BILLS_TABLE() {
+            if (!DB.bills || DB.bills.length === 0) {
+                document.getElementById('billsTable').innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #7f8c8d;">No bills yet. Complete an order to generate a bill.</td></tr>';
+                return;
+            }
+
             let dateFilter = document.getElementById('billsDateFilter').value;
             let filtered = DB.bills;
 
@@ -974,13 +1032,19 @@
                 filtered = DB.bills.filter(b => new Date(b.date).toDateString() === filterDate);
             }
 
+            if (filtered.length === 0) {
+                document.getElementById('billsTable').innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #7f8c8d;">No bills for selected date.</td></tr>';
+                return;
+            }
+
             let html = '<tr><th>Order ID</th><th>Date</th><th>Amount</th><th>Customer</th><th>Contact</th><th>Action</th></tr>';
             for (let b of filtered) {
-                let customerName = b.customer.name ? b.customer.name : '(No name)';
-                let customerContact = b.customer.contact ? b.customer.contact : '-';
+                let customerName = b.customer && b.customer.name ? b.customer.name : '(No name)';
+                let customerContact = b.customer && b.customer.contact ? b.customer.contact : '-';
                 html += '<tr><td>' + b.id + '</td><td>' + new Date(b.date).toLocaleDateString() + '</td><td>₹' + Math.round(b.total) + '</td><td>' + customerName + '</td><td>' + customerContact + '</td><td><button class="btn" onclick="VIEW_BILL(\'' + b.id + '\')">View</button><button class="btn btn-success" onclick="DOWNLOAD_PDF(\'' + b.id + '\')">PDF</button></td></tr>';
             }
             document.getElementById('billsTable').innerHTML = html;
+            console.log('✅ Bills rendered:', filtered.length, 'bills');
         }
 
         function CLEAR_DATE_FILTER() {
@@ -1110,16 +1174,21 @@
         }
 
         function RENDER_INV_BILLS() {
-            if (!DB.inventoryBills || DB.inventoryBills.length === 0) {
-                document.getElementById('inventoryBillsTable').innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #7f8c8d;">No inventory bills uploaded yet</td></tr>';
+            if (!DB.inventoryBills) DB.inventoryBills = [];
+
+            if (DB.inventoryBills.length === 0) {
+                document.getElementById('inventoryBillsTable').innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #7f8c8d;">No inventory bills uploaded yet. Click the upload box above to add bills.</td></tr>';
                 return;
             }
 
             let html = '<tr><th>ID</th><th>Date</th><th>File Name</th><th>Action</th></tr>';
             for (let b of DB.inventoryBills) {
-                html += '<tr><td>' + b.id + '</td><td>' + new Date(b.date).toLocaleDateString() + '</td><td>' + b.fileName + '</td><td><button class="btn btn-success" onclick="DOWNLOAD_INV_BILL(\'' + b.id + '\')">Download</button><button class="btn btn-danger" onclick="DEL_INV_BILL(\'' + b.id + '\')">Delete</button></td></tr>';
+                if (b && b.id) {
+                    html += '<tr><td style="font-size: 11px; font-family: monospace;">' + b.id + '</td><td>' + new Date(b.date).toLocaleDateString() + '</td><td>' + b.fileName + '</td><td><button class="btn btn-success" onclick="DOWNLOAD_INV_BILL(\'' + b.id + '\')">Download</button><button class="btn btn-danger" onclick="DEL_INV_BILL(\'' + b.id + '\')">Delete</button></td></tr>';
+                }
             }
             document.getElementById('inventoryBillsTable').innerHTML = html;
+            console.log('✅ Inventory bills rendered:', DB.inventoryBills.length);
         }
 
         function DOWNLOAD_INV_BILL(id) {
@@ -1190,7 +1259,9 @@
         function LOGOUT() {
             document.getElementById('app').classList.remove('show');
             document.getElementById('login').style.display = 'flex';
-            DB = {shop:'', cats:['ice-cream','toppings','combos','beverages'], items:[], orders:[], bills:[], inventoryBills:[], carts:[[],[],[],[],[]], currentCart:0, currentCat:'all', period:'today'};
+            document.getElementById('shopInput').value = 'Demo Ice Cream';
+            document.getElementById('keyInput').value = 'DEMO2024SECURE123';
+            DB = {shop:'', cats:['ice-cream','toppings','combos','beverages','shakes','mastani'], items:[], orders:[], bills:[], inventoryBills:[], carts:[[],[],[],[],[]], currentCart:0, currentCat:'all', period:'today', customYear:2026};
         }
     </script>
 </body>
